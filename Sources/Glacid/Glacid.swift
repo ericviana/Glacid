@@ -5,6 +5,7 @@
 //  Created by Eric on 21/04/25.
 //
 
+import CoreMotion
 import SwiftUI
 
 /// A view modifier that applies a glacial, frosted glass effect to shapes.
@@ -12,7 +13,7 @@ import SwiftUI
 /// The `GlacidView` modifier creates a sophisticated glass-like appearance by combining
 /// multiple visual effects:
 /// - A translucent material backdrop
-/// - A subtle gradient border
+/// - A subtle gradient border that follows device orientation
 /// - Soft shadows for depth
 ///
 /// You can apply this effect to any shape using the `Shape/glacid()` modifier.
@@ -38,6 +39,8 @@ import SwiftUI
 public struct GlacidView<S: Shape>: View {
     /// The shape to which the glacial effect will be applied.
     let shape: S
+    let motionManager = CMMotionManager()
+    @State private var roll: Double = 0.0
 
     /// Creates a view that applies a glacial effect to the specified shape.
     ///
@@ -46,71 +49,113 @@ public struct GlacidView<S: Shape>: View {
         self.shape = shape
     }
 
+    private var gradientStartPoint: UnitPoint {
+        let adjustedRoll = roll * 2.0
+        return UnitPoint(x: 0.5 + cos(adjustedRoll), y: 0.5 + sin(adjustedRoll))
+    }
+
+    private var gradientEndPoint: UnitPoint {
+        let adjustedRoll = roll * 2.0
+        return UnitPoint(x: 0.5 - cos(adjustedRoll), y: 0.5 - sin(adjustedRoll))
+    }
+
     public var body: some View {
-        if shape is Circle {
-            // Special handling for Circle
-            shape
-                .background(shape)
-                .foregroundStyle(.ultraThinMaterial)
-                .overlay(
-                    Circle()
-                        .stroke(
-                            LinearGradient(
-                                stops: [
-                                    Gradient.Stop(
-                                        color: Color(.quaternaryLabel),
-                                        location: 0.1),
-                                    Gradient.Stop(
-                                        color: Color(.tertiarySystemBackground),
-                                        location: 0.5),
-                                    Gradient.Stop(
-                                        color: Color(.quaternaryLabel),
-                                        location: 0.85),
-                                    Gradient.Stop(
-                                        color: Color(.quaternaryLabel),
-                                        location: 1.0),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                )
-                .shadow(
-                    color: Color(.quaternarySystemFill).opacity(0.5), radius: 2,
-                    x: 0, y: 1)
-        } else {
-            shape
-                .background(shape)
-                .foregroundStyle(.ultraThinMaterial)
-                .overlay(
-                    shape
-                        .stroke(
-                            LinearGradient(
-                                stops: [
-                                    Gradient.Stop(
-                                        color: Color(.quaternaryLabel),
-                                        location: 0.0),
-                                    Gradient.Stop(
-                                        color: Color(.tertiarySystemBackground),
-                                        location: 0.15),
-                                    Gradient.Stop(
-                                        color: Color(.tertiarySystemBackground),
-                                        location: 0.85),
-                                    Gradient.Stop(
-                                        color: Color(.quaternaryLabel),
-                                        location: 1.0),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                )
-                .shadow(
-                    color: Color(.quaternarySystemFill).opacity(0.5), radius: 2,
-                    x: 0, y: 1)
+        Group {
+            if shape is Circle {
+                shape
+                    .background(shape)
+                    .foregroundStyle(.ultraThinMaterial)
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    stops: [
+                                        Gradient.Stop(
+                                            color: Color(.quaternaryLabel),
+                                            location: 0.1),
+                                        Gradient.Stop(
+                                            color: Color(
+                                                .tertiarySystemBackground),
+                                            location: 0.5),
+                                        Gradient.Stop(
+                                            color: Color(.quaternaryLabel),
+                                            location: 0.85),
+                                        Gradient.Stop(
+                                            color: Color(.quaternaryLabel),
+                                            location: 1.0),
+                                    ],
+                                    startPoint: gradientStartPoint,
+                                    endPoint: gradientEndPoint
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+                    .shadow(
+                        color: Color(.quaternarySystemFill).opacity(0.5),
+                        radius: 2, x: 0, y: 1)
+            } else {
+                shape
+                    .background(shape)
+                    .foregroundStyle(.ultraThinMaterial)
+                    .overlay(
+                        shape
+                            .stroke(
+                                LinearGradient(
+                                    stops: [
+                                        Gradient.Stop(
+                                            color: Color(.quaternaryLabel)
+                                                .opacity(0.8),
+                                            location: 0.1),
+                                        Gradient.Stop(
+                                            color: Color(
+                                                .tertiarySystemBackground),
+                                            location: 0.5),
+                                        Gradient.Stop(
+                                            color: Color(.quaternaryLabel)
+                                                .opacity(0.8),
+                                            location: 0.85),
+                                        Gradient.Stop(
+                                            color: Color(.quaternaryLabel)
+                                                .opacity(0.8),
+                                            location: 1.0),
+                                    ],
+
+                                    startPoint: gradientStartPoint,
+                                    endPoint: gradientEndPoint
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+                    .shadow(
+                        color: Color(.quaternarySystemFill).opacity(0.5),
+                        radius: 2, x: 0, y: 1)
+            }
         }
+        .onAppear {
+            startMotionUpdates()
+        }
+        .onDisappear {
+            stopMotionUpdates()
+        }
+    }
+
+    /// Starts receiving device motion updates at 60Hz and animates the roll value.
+    ///
+    /// - Note: Only works if device motion is available.
+    private func startMotionUpdates() {
+        guard motionManager.isDeviceMotionAvailable else { return }
+        motionManager.deviceMotionUpdateInterval = 1 / 60
+        motionManager.startDeviceMotionUpdates(to: .main) { motion, error in
+            guard let motion = motion else { return }
+            withAnimation(.linear(duration: 0.1)) {
+                self.roll = motion.attitude.roll
+            }
+        }
+    }
+
+    /// Stops device motion updates to conserve resources.
+    private func stopMotionUpdates() {
+        motionManager.stopDeviceMotionUpdates()
     }
 }
 
